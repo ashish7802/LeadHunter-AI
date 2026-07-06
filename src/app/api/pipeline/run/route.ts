@@ -6,6 +6,8 @@ import { LeadScorer } from '@/lib/services/leadScorer';
 import { LeadStore } from '@/lib/db/store';
 import { Lead } from '@/lib/types/lead';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {

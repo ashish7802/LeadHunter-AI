@@ -1,9 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import os from 'os';
 import { Lead, CRMFilters, PipelineMetrics } from '../types/lead';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const isVercel = process.env.VERCEL === '1';
+const DATA_DIR = isVercel ? path.join(os.tmpdir(), 'leadhunter_data') : path.join(process.cwd(), 'data');
 const FILE_PATH = path.join(DATA_DIR, 'leads.json');
 const RUNS_FILE_PATH = path.join(DATA_DIR, 'pipeline_runs.json');
 
