@@ -105,7 +105,16 @@ Required JSON Keys:
 
         if (!response.ok) {
           const errText = await response.text();
-          throw new Error(`Groq API HTTP ${response.status}: ${errText}`);
+          let waitMs = 0;
+          if (response.status === 429) {
+            const match = errText.match(/Please try again in ([0-9.]+)s/);
+            if (match && match[1]) {
+              waitMs = Math.ceil(parseFloat(match[1]) * 1000) + 500;
+            }
+          }
+          const err = new Error(`Groq API HTTP ${response.status}: ${errText}`);
+          (err as any).waitMs = waitMs;
+          throw err;
         }
 
         const data = await response.json();
@@ -120,10 +129,12 @@ Required JSON Keys:
         }
 
         return parsed;
-      } catch (err) {
-        console.warn(`[GroqQualifier] Attempt ${attempt}/${maxRetries} failed:`, err);
+      } catch (err: any) {
+        console.warn(`[GroqQualifier] Attempt ${attempt}/${maxRetries} failed:`, err.message);
         if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+          const waitMs = err.waitMs || (1000 * Math.pow(2, attempt - 1));
+          console.warn(`[GroqQualifier] Waiting ${waitMs}ms before retry...`);
+          await new Promise((r) => setTimeout(r, waitMs));
         }
       }
     }

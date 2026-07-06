@@ -28,6 +28,10 @@ export async function POST(request: NextRequest) {
       rawPosts.push(...caPosts);
     }
 
+    // Limit to 10 posts maximum to prevent hitting Groq's 12000 TPM limit
+    // We shuffle the array first so we get a mix of sources/regions
+    rawPosts = rawPosts.sort(() => 0.5 - Math.random()).slice(0, 10);
+
     const processedLeads: Lead[] = [];
     let rejectedCount = 0;
     let duplicateCount = 0;
@@ -41,6 +45,9 @@ export async function POST(request: NextRequest) {
 
       // Step 1: AI Qualification via Groq LLaMA 3.3 70B
       const aiResult = await qualifier.qualifyPost(post);
+      
+      // Delay to respect rate limits (approx 850 tokens per request)
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       if (aiResult.isSpam || aiResult.isRecruiter || aiResult.isJobSeeker) {
         rejectedCount++;
