@@ -11,6 +11,10 @@ import {
   Building2,
   MapPin,
   Trash2,
+  CheckCircle2,
+  BrainCircuit,
+  MessageSquareQuote,
+  Target
 } from 'lucide-react';
 
 interface DrawerProps {
@@ -49,7 +53,7 @@ export const LeadDrawer: React.FC<DrawerProps> = ({
         <div>
           {/* Header */}
           <div className="flex items-start justify-between pb-4 border-b border-white/10">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <div
                 className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-extrabold text-lg tracking-tight border shadow-xl ${
                   lead.leadScore >= 90
@@ -60,7 +64,29 @@ export const LeadDrawer: React.FC<DrawerProps> = ({
                 <span>{lead.leadScore}</span>
                 <span className="text-[9px] font-normal uppercase tracking-wider">Score</span>
               </div>
-              <div>
+
+              <div className="flex flex-col gap-2 w-32 pl-1 border-l border-white/10 hidden sm:flex">
+                <div>
+                  <div className="flex justify-between text-[9px] font-medium mb-1 uppercase tracking-wider">
+                    <span className="text-gray-400">Intent</span>
+                    <span className="text-emerald-400">{lead.intentConfidence ?? 0}%</span>
+                  </div>
+                  <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${lead.intentConfidence ?? 0}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-[9px] font-medium mb-1 uppercase tracking-wider">
+                    <span className="text-gray-400">Business</span>
+                    <span className="text-indigo-400">{lead.businessConfidence ?? 0}%</span>
+                  </div>
+                  <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${lead.businessConfidence ?? 0}%` }} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="ml-2">
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-bold text-white">{lead.companyName}</h2>
                   <span className="px-2 py-0.5 rounded text-xs bg-white/5 border border-white/10 font-mono text-gray-300">
@@ -101,23 +127,61 @@ export const LeadDrawer: React.FC<DrawerProps> = ({
             </select>
           </div>
 
-          {/* AI Intelligence Summary */}
-          <div className="mb-6 p-4 rounded-xl bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/20">
-            <div className="flex items-center gap-2 mb-2 text-indigo-300 font-semibold text-xs">
-              <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
-              <span>Groq LLaMA 3.3 70B Intelligence Analysis</span>
+          {/* AI Intelligence Summary - Sales Consultant's Thought Process */}
+          <div className="mb-6 rounded-xl overflow-hidden border border-indigo-500/20 bg-[#0B101E]">
+            <div className="bg-indigo-500/10 p-3 border-b border-indigo-500/20 flex items-center gap-2">
+              <BrainCircuit className="w-4 h-4 text-indigo-400" />
+              <h3 className="text-xs font-semibold text-indigo-300">Sales Consultant's Thought Process</h3>
             </div>
-            <p className="text-xs text-gray-300 leading-relaxed italic bg-black/20 p-3 rounded-lg border border-white/5">
-              "{lead.aiReasoning}"
-            </p>
-            <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
-              <div>
-                <span className="text-gray-400 block text-[11px]">Primary Tech Need:</span>
-                <span className="font-semibold text-white">{lead.needSummary}</span>
-              </div>
-              <div>
-                <span className="text-gray-400 block text-[11px]">Estimated Budget:</span>
-                <span className="font-semibold text-emerald-400">{lead.estimatedBudget}</span>
+            
+            <div className="p-4">
+              <p className="text-sm text-gray-200 leading-relaxed font-medium mb-4 italic">
+                "{lead.humanReasoning || "No detailed reasoning available."}"
+              </p>
+              
+              <div className="flex flex-col gap-4 pt-4 border-t border-white/5">
+                {lead.explainability && (
+                  <>
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Why Qualified</span>
+                      </div>
+                      <p className="text-xs text-gray-300">{lead.explainability.whyQualified}</p>
+                    </div>
+                    
+                    {lead.explainability.intentSentences && lead.explainability.intentSentences.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <MessageSquareQuote className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Intent Signals</span>
+                        </div>
+                        <ul className="list-disc list-inside text-xs text-gray-300 space-y-1">
+                          {lead.explainability.intentSentences.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Target className="w-3.5 h-3.5 text-cyan-400" />
+                          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Business Capability</span>
+                        </div>
+                        <p className="text-xs text-gray-300">{lead.explainability.businessCapability}</p>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Phone className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Contact Validation</span>
+                        </div>
+                        <p className="text-xs text-gray-300">{lead.explainability.contactValidation}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

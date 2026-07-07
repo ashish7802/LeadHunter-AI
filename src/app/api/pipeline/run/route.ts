@@ -37,6 +37,13 @@ export async function POST(request: NextRequest) {
     const processedLeads: Lead[] = [];
     let rejectedCount = 0;
     let duplicateCount = 0;
+    let totalSpam = 0;
+    let totalRecruiters = 0;
+    let totalAgencies = 0;
+    let totalDevelopers = 0;
+    let totalStudents = 0;
+    let contactVerificationSuccesses = 0;
+    let falsePositiveEstimate = 0;
 
     for (const post of rawPosts) {
       // Deduplication check by URL and by Content Hash
@@ -51,22 +58,45 @@ export async function POST(request: NextRequest) {
       // Delay to respect rate limits (approx 850 tokens per request)
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      if (aiResult.isSpam || aiResult.isRecruiter || aiResult.isJobSeeker) {
+      if (aiResult.isSpam) {
+        totalSpam++;
         rejectedCount++;
-        continue;
+        continue; // Drop spam completely
+      }
+      
+      let initialPriority: Lead['priority'] = 'Qualified Lead';
+      
+      if (aiResult.isRecruiter) {
+        totalRecruiters++;
+        initialPriority = 'Recruiters';
+      } else if (aiResult.isAgencySelling) {
+        totalAgencies++;
+        initialPriority = 'Agencies';
+      } else if (aiResult.isJobSeeker) {
+        totalDevelopers++;
+        initialPriority = 'Developers';
+      } else if (aiResult.isStudent) {
+        totalStudents++;
+        initialPriority = 'Students';
+      } else if (aiResult.intentConfidence < 70 || aiResult.businessConfidence < 70) {
+        initialPriority = 'Needs Human Review';
+        falsePositiveEstimate++;
+      } else if (aiResult.intentConfidence >= 90 && aiResult.businessConfidence >= 90) {
+        initialPriority = 'Hot Lead';
       }
 
       // Step 2: Live Website Verification
       const webAnalysis = await verifier.verifyWebsite(undefined, post.content);
 
-      // Step 3: Lead Scoring
-      const hasPublicContact = Boolean(aiResult.publicEmail || aiResult.publicPhone);
-      const scoreResult = scorer.calculateScore(aiResult, webAnalysis.hasWebsite, hasPublicContact, false, 1);
-
-      if (scoreResult.priority === 'Rejected') {
-        rejectedCount++;
-        continue;
+      // Step 3: Lead Scoring & Contact Verification
+      const hasPublicContact = Boolean(aiResult.publicEmail || aiResult.publicPhone || post.sourceUrl);
+      if (hasPublicContact) {
+        contactVerificationSuccesses++;
+      } else if (initialPriority === 'Hot Lead' || initialPriority === 'Qualified Lead') {
+        initialPriority = 'Needs Contact Verification';
       }
+
+      const scoreResult = scorer.calculateScore(aiResult, webAnalysis.hasWebsite, hasPublicContact, false, 1);
 
       // Build Lead Object
       const newLead: Lead = {
@@ -79,12 +109,13 @@ export async function POST(request: NextRequest) {
         city: aiResult.city || (aiResult.country === 'India' ? 'Bengaluru' : 'Toronto'),
         language: aiResult.language || 'English',
         needSummary: aiResult.needSummary,
-        needCategory: aiResult.needCategory,
+        intentCategory: aiResult.intentCategory,
         estimatedBudget: aiResult.estimatedBudget,
         urgency: aiResult.urgency,
-        priority: scoreResult.priority,
+        priority: initialPriority,
         leadScore: scoreResult.score,
-        confidenceScore: aiResult.confidenceScore,
+        intentConfidence: aiResult.intentConfidence,
+        businessConfidence: aiResult.businessConfidence,
         scoreBreakdown: scoreResult.breakdown,
         publicEmail: aiResult.publicEmail || undefined,
         publicPhone: aiResult.publicPhone || undefined,
@@ -95,12 +126,13 @@ export async function POST(request: NextRequest) {
         rawContent: post.content,
         authorHandle: post.authorHandle,
         websiteAnalysis: webAnalysis,
-        aiReasoning: aiResult.aiReasoning,
+        humanReasoning: aiResult.humanReasoning,
+        explainability: aiResult.explainability,
         verificationStatus: 'Verified Real Business',
         duplicateStatus: 'Unique',
-        pipelineStatus: 'New Lead',
+        pipelineStatus: initialPriority,
         userNotes: [],
-        tags: [aiResult.country, aiResult.needCategory],
+        tags: [aiResult.country, aiResult.intentCategory],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -118,8 +150,15 @@ export async function POST(request: NextRequest) {
       newQualified: processedLeads.length,
       duplicatesFiltered: duplicateCount,
       rejectedCount,
-      sources: ['Algolia HN Search', 'GitHub Public Issues', 'HN JobStream'],
+      sources: ['Reddit', 'HackerNews', 'StackOverflow'],
       durationMs,
+      totalSpam,
+      totalRecruiters,
+      totalAgencies,
+      totalDevelopers,
+      totalStudents,
+      contactVerificationSuccessRate: rawPosts.length > 0 ? (contactVerificationSuccesses / rawPosts.length) * 100 : 0,
+      falsePositiveEstimate
     };
     store.saveRunRecord(runRecord);
 

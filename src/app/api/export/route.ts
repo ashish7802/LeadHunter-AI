@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         `"${l.industry}"`,
         `"${l.country}"`,
         `"${l.city}"`,
-        `"${l.needCategory}"`,
+        `"${l.intentCategory}"`,
         `"${l.needSummary.replace(/"/g, '""')}"`,
         `"${l.estimatedBudget}"`,
         `"${l.priority}"`,
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
         `"${l.platform}"`,
         `"${l.sourceUrl}"`,
         l.websiteAnalysis.hasWebsite ? 'Yes' : 'No',
-        `"${l.aiReasoning.replace(/"/g, '""')}"`,
+        `"${l.explainability?.whyQualified?.replace(/"/g, '""') || l.humanReasoning.replace(/"/g, '""')}"`,
         `"${l.createdAt}"`,
       ]);
 

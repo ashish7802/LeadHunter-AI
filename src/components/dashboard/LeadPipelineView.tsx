@@ -11,7 +11,7 @@ interface PipelineViewProps {
 }
 
 const STAGES: Lead['pipelineStatus'][] = [
-  'New Lead',
+  'Hot Lead',
   'In Discussion',
   'Proposal Sent',
   'Closed Won',

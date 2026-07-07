@@ -1,6 +1,7 @@
-import { RawPost, CountryType } from '../types/lead';
+import { RawPost, CountryType, IntentCategory } from '../types/lead';
 
 export interface AIQualificationResult {
+  humanReasoning: string;
   isBusinessOwner: boolean;
   hasPurchaseIntent: boolean;
   leadName: string;
@@ -11,7 +12,7 @@ export interface AIQualificationResult {
   city: string;
   language: string;
   needSummary: string;
-  needCategory: 'New Website' | 'Redesign' | 'E-Commerce' | 'SaaS/App' | 'Landing Page' | 'Automation/CRM';
+  intentCategory: IntentCategory;
   estimatedBudget: string;
   urgency: 'Immediate (ASAP)' | 'High' | 'Medium' | 'Low';
   publicEmail?: string;
@@ -20,8 +21,15 @@ export interface AIQualificationResult {
   isRecruiter: boolean;
   isAgencySelling: boolean;
   isJobSeeker: boolean;
-  confidenceScore: number;
-  aiReasoning: string;
+  isStudent: boolean;
+  intentConfidence: number;
+  businessConfidence: number;
+  explainability: {
+    whyQualified: string;
+    intentSentences: string[];
+    contactValidation: string;
+    businessCapability: string;
+  };
 }
 
 export class GroqQualifier {
@@ -42,14 +50,17 @@ export class GroqQualifier {
       return this.ruleBasedFallback(post);
     }
 
-    const systemPrompt = `You are LeadHunter AI's Lead Intelligence Engine powered by Groq LLaMA 3.3 70B.
+    const systemPrompt = `You are LeadHunter AI's Deep Intent Engine powered by Groq LLaMA 3.3 70B.
 Your task is to analyze raw public posts and extract structured business lead signals for web development services.
 
-Strict Rules:
-1. Target Countries: India or Canada (if unknown or other, set country accordingly).
-2. DO NOT hallucinate email addresses or phone numbers. Only extract them if explicitly present in the raw content.
-3. Identify whether this is a genuine business looking to HIRE/PAY for web development services vs a job seeker looking for work, a recruiter hiring an employee, an agency selling services, or spam.
-4. You MUST respond with a single valid JSON object matching the requested schema.`;
+Strict Rules (CRITICAL - DO NOT IGNORE):
+1. NO KEYWORD MATCHING: Do not classify a lead just because they said "web development". Read the whole post. Understand the context. Are they a buyer, a seller, a student, or a recruiter?
+2. VERIFY CONTACT INFO: Never hallucinate or generate fake emails/phones. Only extract contact info if explicitly written in the raw content.
+3. HUMAN REASONING FIRST: Begin your JSON with a 'humanReasoning' field explaining your logic internally like a human sales consultant.
+4. CONFIDENCE SEPARATION: Separate intentConfidence (how sure are you they want to buy?) from businessConfidence (how sure are you they are a real business/founder?). Rate 0-100.
+5. STRICT CATEGORIES: 'intentCategory' must be EXACTLY ONE of the allowed strings.
+6. EXPLAINABILITY: Fill the 'explainability' object with rigorous, logical proofs from the text.
+7. TARGET COUNTRIES: Only target India and Canada. If unknown, set 'Other'.`;
 
     const userPrompt = `Analyze this post and output structured JSON:
 
@@ -58,8 +69,9 @@ Platform: ${post.platform}
 Location Hint: ${post.locationHint || 'Unknown'}
 Content: "${post.content}"
 
-Required JSON Keys:
+Required JSON Schema (MUST MATCH EXACTLY):
 {
+  "humanReasoning": "Internal thought process explaining intent and business status",
   "isBusinessOwner": boolean,
   "hasPurchaseIntent": boolean,
   "leadName": "Person's name or author handle",
@@ -70,17 +82,24 @@ Required JSON Keys:
   "city": "City name if mentioned",
   "language": "English",
   "needSummary": "1-2 sentence concise summary of web dev request",
-  "needCategory": "New Website" or "Redesign" or "E-Commerce" or "SaaS/App" or "Landing Page" or "Automation/CRM",
+  "intentCategory": "Website Purchase" | "Landing Page" | "Ecommerce Store" | "SaaS Development" | "MVP Development" | "Automation" | "Dashboard Development" | "Booking System" | "Website Redesign" | "Business Launch" | "Digital Transformation" | "Freelancer Hiring" | "Agency Hiring" | "Marketing Only" | "Recruiting Employees" | "Looking For Job" | "Learning" | "Tutorial" | "Discussion" | "Meme" | "News" | "Spam" | "Unknown",
   "estimatedBudget": "e.g. ₹80k - 1.5L, $3,500 CAD, or Unknown",
-  "urgency": "Immediate (ASAP)" or "High" or "Medium" or "Low",
+  "urgency": "Immediate (ASAP)", "High", "Medium", or "Low",
   "publicEmail": "extracted email if present, else empty string",
   "publicPhone": "extracted phone if present, else empty string",
   "isSpam": boolean,
   "isRecruiter": boolean,
   "isAgencySelling": boolean,
   "isJobSeeker": boolean,
-  "confidenceScore": integer 0 to 100,
-  "aiReasoning": "Technical analysis explaining why lead is qualified or rejected."
+  "isStudent": boolean,
+  "intentConfidence": integer 0 to 100,
+  "businessConfidence": integer 0 to 100,
+  "explainability": {
+    "whyQualified": "Why is this a high intent B2B lead?",
+    "intentSentences": ["Exact quote 1 from text", "Exact quote 2"],
+    "contactValidation": "How can we contact them based on the text?",
+    "businessCapability": "Why do we think they have the budget/authority to buy?"
+  }
 }`;
 
     const maxRetries = 3;
@@ -124,7 +143,7 @@ Required JSON Keys:
         const parsed: AIQualificationResult = JSON.parse(rawText);
 
         // Basic Schema Validation
-        if (typeof parsed.isBusinessOwner !== 'boolean' || typeof parsed.needSummary !== 'string') {
+        if (typeof parsed.isBusinessOwner !== 'boolean' || typeof parsed.humanReasoning !== 'string' || !parsed.explainability) {
           throw new Error('Groq response failed schema validation');
         }
 
@@ -151,31 +170,36 @@ Required JSON Keys:
     const emailMatch = post.content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     const publicEmail = emailMatch ? emailMatch[0] : '';
 
-    const isRecruiter = text.includes('hiring employee') || text.includes('recruiter') || text.includes('full-time role');
-    const isJobSeeker = text.includes('i am looking for work') || text.includes('hire me');
-
     return {
+      humanReasoning: 'FALLBACK: Groq API was unavailable. This is a rudimentary string matching estimate, not AI-verified semantic intent.',
       isBusinessOwner: true,
-      hasPurchaseIntent: !isRecruiter && !isJobSeeker,
+      hasPurchaseIntent: true,
       leadName: post.author,
       companyName: post.author ? `${post.author} Business` : 'Unknown Business',
-      businessType: text.includes('clinic') ? 'Healthcare' : text.includes('d2c') ? 'D2C Retail' : 'Services',
-      industry: text.includes('clinic') ? 'Healthcare' : text.includes('d2c') ? 'E-Commerce' : 'Technology',
+      businessType: 'General Services',
+      industry: 'Technology',
       country: isIndia ? 'India' : isCanada ? 'Canada' : 'Other',
       city: isIndia ? 'Bengaluru' : isCanada ? 'Toronto' : 'Other',
       language: 'English',
-      needSummary: 'Looking for professional web development or redesign services.',
-      needCategory: text.includes('redesign') ? 'Redesign' : text.includes('ecommerce') ? 'E-Commerce' : 'New Website',
-      estimatedBudget: isIndia ? '₹80,000+' : isCanada ? 'CAD $3,500' : 'Unknown',
-      urgency: text.includes('asap') || text.includes('urgent') ? 'Immediate (ASAP)' : 'High',
+      needSummary: 'Potential web development needs inferred from text.',
+      intentCategory: 'Unknown',
+      estimatedBudget: 'Unknown',
+      urgency: 'Medium',
       publicEmail,
       publicPhone: '',
       isSpam: false,
-      isRecruiter,
+      isRecruiter: false,
       isAgencySelling: false,
-      isJobSeeker,
-      confidenceScore: 40,
-      aiReasoning: 'FALLBACK: Groq API was unavailable. This is a rule-based signal estimate.',
+      isJobSeeker: false,
+      isStudent: false,
+      intentConfidence: 40,
+      businessConfidence: 40,
+      explainability: {
+        whyQualified: 'Rule-based fallback matched location/keywords.',
+        intentSentences: [],
+        contactValidation: 'Regex pattern matching.',
+        businessCapability: 'Unknown.'
+      }
     };
   }
 }

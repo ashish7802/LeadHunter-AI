@@ -12,7 +12,7 @@ export class LeadScorer {
     let websiteNeed = 0;
     if (!hasWebsite) {
       websiteNeed = 25; // No website is highest need
-    } else if (aiResult.needCategory === 'Redesign' || aiResult.needCategory === 'New Website') {
+    } else if (aiResult.intentCategory === 'Website Redesign' || aiResult.intentCategory === 'Website Purchase') {
       websiteNeed = 20;
     } else {
       websiteNeed = 15;
@@ -58,7 +58,7 @@ export class LeadScorer {
     let priority: LeadPriority = 'Rejected';
     if (totalScore >= 90) priority = 'Hot Lead';
     else if (totalScore >= 80) priority = 'Qualified Lead';
-    else if (totalScore >= 60) priority = 'Needs Review';
+    else if (totalScore >= 60) priority = 'Needs Human Review';
     else priority = 'Rejected';
 
     const breakdown: LeadScoreBreakdown = {

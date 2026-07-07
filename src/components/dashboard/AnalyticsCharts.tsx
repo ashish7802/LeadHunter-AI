@@ -38,7 +38,7 @@ export const AnalyticsCharts: React.FC<ChartsProps> = ({ leads }) => {
   // Need Category data
   const categoryMap: Record<string, number> = {};
   leads.forEach((l) => {
-    categoryMap[l.needCategory] = (categoryMap[l.needCategory] || 0) + 1;
+    categoryMap[l.intentCategory] = (categoryMap[l.intentCategory] || 0) + 1;
   });
 
   const categoryData = Object.entries(categoryMap).map(([key, val]) => ({
