@@ -59,6 +59,25 @@ export interface AIExplainability {
   businessCapability: string;
 }
 
+export interface BusinessEnrichment {
+  companyWebsite?: string;
+  businessCategory?: string;
+  description?: string;
+  companySize?: string;
+  socialProfiles?: string[];
+  googleBusinessProfile?: string;
+  location?: string;
+  contactPage?: string;
+}
+
+export interface OutreachReadiness {
+  score: number; // 0-100
+  canContactToday: boolean;
+  isInformationSufficient: boolean;
+  likelyToSucceed: boolean;
+  reasons: string[];
+}
+
 export interface Lead {
   id: string;
   leadName: string;
@@ -94,6 +113,9 @@ export interface Lead {
   humanReasoning: string;
   explainability: AIExplainability;
   
+  businessEnrichment?: BusinessEnrichment;
+  outreachReadiness?: OutreachReadiness;
+  
   verificationStatus: 'Verified Real Business' | 'Pending Verification' | 'Rejected';
   duplicateStatus: 'Unique' | 'Duplicate Flagged';
   
@@ -113,6 +135,43 @@ export interface RawPost {
   timestamp: string;
   content: string;
   locationHint?: string;
+}
+
+export type ConnectorStatus = 'Connected' | 'Error' | 'Rate Limited' | 'Not Configured';
+
+export interface ConnectorHealth {
+  sourceId: string;
+  sourceName: string;
+  status: ConnectorStatus;
+  lastSync: string;
+  lastFailedSync?: string;
+  totalPostsRetrieved: number;
+  qualifiedLeadsProduced: number;
+  contactVerificationRate: number;
+  apiUsageCount: number;
+  apiRateLimitStatus: 'Good' | 'Warning' | 'Exceeded' | 'N/A';
+  errorMessage?: string;
+  averageResponseTimeMs: number;
+  errorCount: number;
+  qualityScore: number;
+}
+
+export interface AILeadQualityAudit {
+  totalPosts: number;
+  qualifiedLeads: number;
+  hotLeads: number;
+  contactVerifiedLeads: number;
+  needsContactVerification: number;
+  spam: number;
+  recruiters: number;
+  agencies: number;
+  students: number;
+  developers: number;
+  falsePositiveEstimate: number;
+  topPerformingSource: string;
+  worstPerformingSource: string;
+  recommendedSourcePriority: string[];
+  recommendationReasons: string[];
 }
 
 export interface PipelineMetrics {

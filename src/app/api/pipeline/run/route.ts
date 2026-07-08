@@ -3,8 +3,9 @@ import { SourceIntelligenceEngine } from '@/lib/scrapers/SourceIntelligenceEngin
 import { GroqQualifier } from '@/lib/ai/qualifier';
 import { WebsiteVerifier } from '@/lib/services/websiteVerifier';
 import { LeadScorer } from '@/lib/services/leadScorer';
+import { EnrichmentEngine } from '@/lib/ai/enrichmentEngine';
 import { LeadStore } from '@/lib/db/store';
-import { Lead, RawPost } from '@/lib/types/lead';
+import { Lead, RawPost, AILeadQualityAudit } from '@/lib/types/lead';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
     const qualifier = new GroqQualifier();
     const verifier = new WebsiteVerifier();
     const scorer = new LeadScorer();
+    const enricher = new EnrichmentEngine();
     const store = LeadStore.getInstance();
 
     let rawSourceResults: { posts: RawPost[], sourceId: string }[] = [];
@@ -163,7 +165,12 @@ export async function POST(request: NextRequest) {
       };
 
       store.saveLead(newLead);
-      processedLeads.push(newLead);
+      
+      // Step 4: Business Enrichment & Outreach Readiness
+      const enrichedLead = await enricher.enrichLead(newLead);
+      
+      store.saveLead(enrichedLead); // Overwrite with enriched
+      processedLeads.push(enrichedLead);
     }
 
     const durationMs = Date.now() - startTime;
@@ -172,6 +179,42 @@ export async function POST(request: NextRequest) {
       sourceId,
       ...sourceStats[sourceId]
     }));
+
+    // Generate AI Lead Quality Audit
+    let topSource = 'None';
+    let worstSource = 'None';
+    let topCount = -1;
+    let worstCount = Infinity;
+    
+    for (const sourceId in sourceStats) {
+      const stats = sourceStats[sourceId];
+      if (stats.qualifiedCount > topCount) {
+        topCount = stats.qualifiedCount;
+        topSource = sourceId;
+      }
+      if (stats.spamCount > worstCount || worstCount === Infinity) {
+        worstCount = stats.spamCount;
+        worstSource = sourceId;
+      }
+    }
+
+    const aiLeadQualityAudit: AILeadQualityAudit = {
+      totalPosts: limitedPosts.length,
+      qualifiedLeads: processedLeads.length,
+      hotLeads: processedLeads.filter(l => l.priority === 'Hot Lead').length,
+      contactVerifiedLeads: contactVerificationSuccesses,
+      needsContactVerification: processedLeads.filter(l => l.priority === 'Needs Contact Verification').length,
+      spam: totalSpam,
+      recruiters: totalRecruiters,
+      agencies: totalAgencies,
+      students: totalStudents,
+      developers: totalDevelopers,
+      falsePositiveEstimate,
+      topPerformingSource: topSource,
+      worstPerformingSource: worstSource,
+      recommendedSourcePriority: [topSource].filter(s => s !== 'None'),
+      recommendationReasons: [`${topSource} produced the most qualified leads (${topCount}).`]
+    };
 
     const runRecord = {
       id: `run-${Date.now()}`,
@@ -190,7 +233,8 @@ export async function POST(request: NextRequest) {
       totalDevelopers,
       totalStudents,
       contactVerificationSuccessRate: limitedPosts.length > 0 ? (contactVerificationSuccesses / limitedPosts.length) * 100 : 0,
-      falsePositiveEstimate
+      falsePositiveEstimate,
+      aiLeadQualityAudit
     };
     store.saveRunRecord(runRecord);
 

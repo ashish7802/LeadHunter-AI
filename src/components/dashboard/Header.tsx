@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Sparkles, Download, RefreshCw, Globe, ShieldCheck, Cpu } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Sparkles, Download, RefreshCw, Globe, ShieldCheck, Cpu, Database } from 'lucide-react';
 
 interface HeaderProps {
   searchQuery: string;
@@ -43,6 +44,10 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <p className="text-xs text-gray-400">High-Intent Web Development Intelligence • India & Canada</p>
             </div>
+            <Link href="/health" className="ml-4 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors">
+              <Database className="w-3.5 h-3.5" />
+              Source Health
+            </Link>
           </div>
 
           <div className="hidden lg:flex items-center gap-3 ml-4 pl-4 border-l border-white/10 text-xs">

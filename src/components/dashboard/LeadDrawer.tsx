@@ -186,6 +186,83 @@ export const LeadDrawer: React.FC<DrawerProps> = ({
             </div>
           </div>
 
+          {/* Outreach Readiness */}
+          {lead.outreachReadiness && (
+            <div className="mb-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2">
+                <Target className="w-4 h-4 text-emerald-400" />
+                AI Outreach Readiness Score
+              </h3>
+              <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg border ${lead.outreachReadiness.score >= 50 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'}`}>
+                      {lead.outreachReadiness.score}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">Outreach Readiness</h4>
+                      <p className="text-xs text-gray-400">{lead.outreachReadiness.canContactToday ? 'Direct Contact Possible' : 'Cannot Contact Today'}</p>
+                    </div>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-xs font-medium border ${lead.outreachReadiness.likelyToSucceed ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'}`}>
+                    {lead.outreachReadiness.likelyToSucceed ? 'High Probability' : 'Needs More Info'}
+                  </div>
+                </div>
+                <div className="space-y-1.5 pt-3 border-t border-white/10">
+                  {lead.outreachReadiness.reasons.map((r, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-gray-300">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1 shrink-0" />
+                      <span>{r}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Business Enrichment */}
+          {lead.businessEnrichment && (
+            <div className="mb-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-indigo-400" />
+                Business Enrichment Data
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {lead.businessEnrichment.companyWebsite && (
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-[10px] text-gray-400 block mb-1">Company Website</span>
+                    <a href={lead.businessEnrichment.companyWebsite} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-400 hover:underline inline-flex items-center gap-1">
+                      {lead.businessEnrichment.companyWebsite}
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+                {lead.businessEnrichment.companySize && (
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-[10px] text-gray-400 block mb-1">Company Size</span>
+                    <span className="text-xs text-white">{lead.businessEnrichment.companySize}</span>
+                  </div>
+                )}
+                {lead.businessEnrichment.businessCategory && (
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-[10px] text-gray-400 block mb-1">Category</span>
+                    <span className="text-xs text-white">{lead.businessEnrichment.businessCategory}</span>
+                  </div>
+                )}
+                {lead.businessEnrichment.socialProfiles && lead.businessEnrichment.socialProfiles.length > 0 && (
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-[10px] text-gray-400 block mb-1">Social Profiles</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {lead.businessEnrichment.socialProfiles.map((s, i) => (
+                        <a key={i} href={s} target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:underline">Link {i+1}</a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Public Contact Details */}
           <div className="mb-6">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">

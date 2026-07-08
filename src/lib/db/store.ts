@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
-import { Lead, CRMFilters, PipelineMetrics } from '../types/lead';
+import { Lead, CRMFilters, PipelineMetrics, ConnectorHealth } from '../types/lead';
 
 const isVercel = process.env.VERCEL === '1';
 const DATA_DIR = isVercel ? path.join(os.tmpdir(), 'leadhunter_data') : path.join(process.cwd(), 'data');
@@ -35,12 +35,14 @@ export interface PipelineRunRecord {
   totalStudents?: number;
   contactVerificationSuccessRate?: number;
   falsePositiveEstimate?: number;
+  aiLeadQualityAudit?: import('../types/lead').AILeadQualityAudit;
 }
 
 export class LeadStore {
   private static instance: LeadStore;
   private memoryLeads: Map<string, Lead> = new Map();
   private memoryRunRecords: PipelineRunRecord[] = [];
+  private memoryConnectorHealth: Map<string, ConnectorHealth> = new Map();
   private contentHashes: Set<string> = new Set();
   private isInitialized = false;
 
@@ -77,6 +79,13 @@ export class LeadStore {
         const rawRuns = fs.readFileSync(RUNS_FILE_PATH, 'utf-8');
         this.memoryRunRecords = JSON.parse(rawRuns);
       }
+      
+      const connPath = path.join(DATA_DIR, 'connectors.json');
+      if (fs.existsSync(connPath)) {
+        const rawConn = fs.readFileSync(connPath, 'utf-8');
+        const list: ConnectorHealth[] = JSON.parse(rawConn);
+        list.forEach(item => this.memoryConnectorHealth.set(item.sourceId, item));
+      }
     } catch (err) {
       console.warn('[LeadStore] Persistence init warning:', err);
     }
@@ -101,6 +110,7 @@ export class LeadStore {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
       fs.writeFileSync(RUNS_FILE_PATH, JSON.stringify(this.memoryRunRecords, null, 2), 'utf-8');
+      fs.writeFileSync(path.join(DATA_DIR, 'connectors.json'), JSON.stringify(Array.from(this.memoryConnectorHealth.values()), null, 2), 'utf-8');
     } catch (err) {
       console.error('[LeadStore] Failed to save pipeline runs to disk:', err);
     }
@@ -200,6 +210,15 @@ export class LeadStore {
 
   public getRunHistory(): PipelineRunRecord[] {
     return this.memoryRunRecords;
+  }
+
+  public saveConnectorHealth(health: ConnectorHealth) {
+    this.memoryConnectorHealth.set(health.sourceId, health);
+    this.saveRunsToDisk();
+  }
+
+  public getConnectorHealth(): ConnectorHealth[] {
+    return Array.from(this.memoryConnectorHealth.values());
   }
 
   public getMetrics(): PipelineMetrics {
