@@ -54,13 +54,14 @@ export class GroqQualifier {
 Your task is to analyze raw public posts and extract structured business lead signals for web development services.
 
 Strict Rules (CRITICAL - DO NOT IGNORE):
-1. NO KEYWORD MATCHING: Do not classify a lead just because they said "web development". Read the whole post. Understand the context. Are they a buyer, a seller, a student, or a recruiter?
+1. NO KEYWORD MATCHING: Do not classify a lead just because they said "web development", "react", "website", or "frontend". Read the whole post. Understand the context. Are they a buyer, a seller, a student, or a recruiter?
 2. VERIFY CONTACT INFO: Never hallucinate or generate fake emails/phones. Only extract contact info if explicitly written in the raw content.
-3. HUMAN REASONING FIRST: Begin your JSON with a 'humanReasoning' field explaining your logic internally like a human sales consultant.
+3. HUMAN REASONING FIRST: Begin your JSON with a 'humanReasoning' field explaining your logic internally like a human sales consultant. Ask yourself: "What is the author actually trying to achieve?"
 4. CONFIDENCE SEPARATION: Separate intentConfidence (how sure are you they want to buy?) from businessConfidence (how sure are you they are a real business/founder?). Rate 0-100.
 5. STRICT CATEGORIES: 'intentCategory' must be EXACTLY ONE of the allowed strings.
 6. EXPLAINABILITY: Fill the 'explainability' object with rigorous, logical proofs from the text.
-7. TARGET COUNTRIES: Only target India and Canada. If unknown, set 'Other'.`;
+7. BUSINESS FIRST: Reject leads that are just developers looking for jobs or students asking questions. Only accept true business/founders/SMEs.
+8. TARGET COUNTRIES: Only target India and Canada. If unknown, set 'Other'.`;
 
     const userPrompt = `Analyze this post and output structured JSON:
 

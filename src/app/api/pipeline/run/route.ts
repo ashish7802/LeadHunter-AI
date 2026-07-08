@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SocialFetchClient } from '@/lib/scrapers/socialFetchClient';
+import { SourceIntelligenceEngine } from '@/lib/scrapers/SourceIntelligenceEngine';
 import { GroqQualifier } from '@/lib/ai/qualifier';
 import { WebsiteVerifier } from '@/lib/services/websiteVerifier';
 import { LeadScorer } from '@/lib/services/leadScorer';
 import { LeadStore } from '@/lib/db/store';
-import { Lead } from '@/lib/types/lead';
+import { Lead, RawPost } from '@/lib/types/lead';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,25 +14,41 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const targetRegion: 'India' | 'Canada' | 'All' = body.region || 'All';
 
-    const scraper = new SocialFetchClient();
+    const scraper = new SourceIntelligenceEngine();
     const qualifier = new GroqQualifier();
     const verifier = new WebsiteVerifier();
     const scorer = new LeadScorer();
     const store = LeadStore.getInstance();
 
-    let rawPosts = [];
+    let rawSourceResults: { posts: RawPost[], sourceId: string }[] = [];
     if (targetRegion === 'All' || targetRegion === 'India') {
       const inPosts = await scraper.fetchPostsForRegion('India');
-      rawPosts.push(...inPosts);
+      rawSourceResults.push(...inPosts);
     }
     if (targetRegion === 'All' || targetRegion === 'Canada') {
       const caPosts = await scraper.fetchPostsForRegion('Canada');
-      rawPosts.push(...caPosts);
+      rawSourceResults.push(...caPosts);
     }
 
-    // Limit to 10 posts maximum to prevent hitting Groq's 12000 TPM limit
-    // We shuffle the array first so we get a mix of sources/regions
-    rawPosts = rawPosts.sort(() => 0.5 - Math.random()).slice(0, 10);
+    // Prepare source intelligence tracking
+    const sourceStats: Record<string, { totalScraped: number; qualifiedCount: number; contactFoundCount: number; spamCount: number }> = {};
+    
+    // Flatten and limit to 10 posts maximum to prevent hitting Groq's 12000 TPM limit
+    // Keep track of which post came from which source for metrics
+    const allPostsWithSource: { post: RawPost, sourceId: string }[] = [];
+    
+    for (const res of rawSourceResults) {
+      if (!sourceStats[res.sourceId]) {
+        sourceStats[res.sourceId] = { totalScraped: 0, qualifiedCount: 0, contactFoundCount: 0, spamCount: 0 };
+      }
+      sourceStats[res.sourceId].totalScraped += res.posts.length;
+      
+      for (const p of res.posts) {
+        allPostsWithSource.push({ post: p, sourceId: res.sourceId });
+      }
+    }
+    
+    const limitedPosts = allPostsWithSource.sort(() => 0.5 - Math.random()).slice(0, 10);
 
     const processedLeads: Lead[] = [];
     let rejectedCount = 0;
@@ -45,7 +61,7 @@ export async function POST(request: NextRequest) {
     let contactVerificationSuccesses = 0;
     let falsePositiveEstimate = 0;
 
-    for (const post of rawPosts) {
+    for (const { post, sourceId } of limitedPosts) {
       // Deduplication check by URL and by Content Hash
       if (store.isDuplicate(post.sourceUrl) || store.isDuplicateByContent(post.content)) {
         duplicateCount++;
@@ -61,6 +77,7 @@ export async function POST(request: NextRequest) {
       if (aiResult.isSpam) {
         totalSpam++;
         rejectedCount++;
+        sourceStats[sourceId].spamCount++;
         continue; // Drop spam completely
       }
       
@@ -94,6 +111,14 @@ export async function POST(request: NextRequest) {
         contactVerificationSuccesses++;
       } else if (initialPriority === 'Hot Lead' || initialPriority === 'Qualified Lead') {
         initialPriority = 'Needs Contact Verification';
+      }
+
+      // Track qualified sources
+      if (initialPriority === 'Hot Lead' || initialPriority === 'Qualified Lead' || initialPriority === 'Needs Contact Verification' || initialPriority === 'Needs Human Review') {
+         sourceStats[sourceId].qualifiedCount++;
+         if (hasPublicContact) {
+           sourceStats[sourceId].contactFoundCount++;
+         }
       }
 
       const scoreResult = scorer.calculateScore(aiResult, webAnalysis.hasWebsite, hasPublicContact, false, 1);
@@ -142,22 +167,29 @@ export async function POST(request: NextRequest) {
     }
 
     const durationMs = Date.now() - startTime;
+    
+    const sourceIntelligence = Object.keys(sourceStats).map(sourceId => ({
+      sourceId,
+      ...sourceStats[sourceId]
+    }));
+
     const runRecord = {
       id: `run-${Date.now()}`,
       timestamp: new Date().toISOString(),
       region: targetRegion,
-      totalIngested: rawPosts.length,
+      totalIngested: limitedPosts.length,
       newQualified: processedLeads.length,
       duplicatesFiltered: duplicateCount,
       rejectedCount,
-      sources: ['Reddit', 'HackerNews', 'StackOverflow'],
+      sources: Object.keys(sourceStats),
+      sourceIntelligence,
       durationMs,
       totalSpam,
       totalRecruiters,
       totalAgencies,
       totalDevelopers,
       totalStudents,
-      contactVerificationSuccessRate: rawPosts.length > 0 ? (contactVerificationSuccesses / rawPosts.length) * 100 : 0,
+      contactVerificationSuccessRate: limitedPosts.length > 0 ? (contactVerificationSuccesses / limitedPosts.length) * 100 : 0,
       falsePositiveEstimate
     };
     store.saveRunRecord(runRecord);

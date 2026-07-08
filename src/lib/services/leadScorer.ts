@@ -61,6 +61,11 @@ export class LeadScorer {
     else if (totalScore >= 60) priority = 'Needs Human Review';
     else priority = 'Rejected';
 
+    // Enforcement Policy: If there is no public contact method, it MUST NOT be Hot/Qualified.
+    if (!hasPublicContact && (priority === 'Hot Lead' || priority === 'Qualified Lead' || priority === 'Needs Human Review')) {
+      priority = 'Needs Contact Verification';
+    }
+
     const breakdown: LeadScoreBreakdown = {
       websiteNeed,
       businessOwnerIntent,

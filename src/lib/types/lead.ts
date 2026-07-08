@@ -1,4 +1,4 @@
-export type PlatformType = 'twitter' | 'reddit' | 'linkedin' | 'facebook' | 'instagram';
+export type PlatformType = 'twitter' | 'reddit' | 'linkedin' | 'facebook' | 'instagram' | 'upwork';
 export type CountryType = 'India' | 'Canada' | 'Other';
 
 // Smart Dashboard Queues (Priorities)

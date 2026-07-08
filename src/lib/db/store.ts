@@ -19,6 +19,13 @@ export interface PipelineRunRecord {
   rejectedCount: number;
   sources: string[];
   durationMs: number;
+  sourceIntelligence?: {
+    sourceId: string;
+    totalScraped: number;
+    qualifiedCount: number;
+    contactFoundCount: number;
+    spamCount: number;
+  }[];
   
   // Continuous Learning metrics (Stage 9)
   totalSpam?: number;
