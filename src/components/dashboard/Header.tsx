@@ -42,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <h1 className="text-xl font-bold tracking-tight text-white">LeadHunter <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400">AI</span></h1>
                 <span className="px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">v2.0 Enterprise</span>
               </div>
-              <p className="text-xs text-gray-400">High-Intent Web Development Intelligence • India & Canada</p>
+              <p className="text-xs text-gray-400">Agency Revenue Intelligence & Sales CRM Platform</p>
             </div>
             <Link href="/health" className="ml-4 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors">
               <Database className="w-3.5 h-3.5" />
@@ -78,7 +78,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Country Filter Pills */}
           <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/10 text-xs">
-            {['All', 'India', 'Canada'].map((c) => (
+            {['All', 'United States', 'India', 'Canada', 'Europe'].map((c) => (
               <button
                 key={c}
                 onClick={() => onCountryChange(c)}
@@ -90,6 +90,8 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 {c === 'India' && '🇮🇳 '}
                 {c === 'Canada' && '🇨🇦 '}
+                {c === 'United States' && '🇺🇸 '}
+                {c === 'Europe' && '🇪🇺 '}
                 {c}
               </button>
             ))}

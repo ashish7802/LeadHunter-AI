@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SourceIntelligenceEngine } from '@/lib/scrapers/SourceIntelligenceEngine';
 import { GroqQualifier } from '@/lib/ai/qualifier';
-import { WebsiteVerifier } from '@/lib/services/websiteVerifier';
-import { LeadScorer } from '@/lib/services/leadScorer';
-import { EnrichmentEngine } from '@/lib/ai/enrichmentEngine';
 import { LeadStore } from '@/lib/db/store';
-import { Lead, RawPost, AILeadQualityAudit } from '@/lib/types/lead';
+import { WebsiteVerifier } from '@/lib/services/websiteVerifier';
+import { Lead, RawPost, AILeadQualityAudit, OpportunityPriority } from '@/lib/types/lead';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,24 +11,16 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
     const body = await request.json().catch(() => ({}));
-    const targetRegion: 'India' | 'Canada' | 'All' = body.region || 'All';
+    const targetRegion = body.region || 'Worldwide';
 
     const scraper = new SourceIntelligenceEngine();
     const qualifier = new GroqQualifier();
-    const verifier = new WebsiteVerifier();
-    const scorer = new LeadScorer();
-    const enricher = new EnrichmentEngine();
     const store = LeadStore.getInstance();
+    const websiteVerifier = new WebsiteVerifier();
 
     let rawSourceResults: { posts: RawPost[], sourceId: string }[] = [];
-    if (targetRegion === 'All' || targetRegion === 'India') {
-      const inPosts = await scraper.fetchPostsForRegion('India');
-      rawSourceResults.push(...inPosts);
-    }
-    if (targetRegion === 'All' || targetRegion === 'Canada') {
-      const caPosts = await scraper.fetchPostsForRegion('Canada');
-      rawSourceResults.push(...caPosts);
-    }
+    const posts = await scraper.fetchPostsWorldwide();
+    rawSourceResults.push(...posts);
 
     // Prepare source intelligence tracking
     const sourceStats: Record<string, { totalScraped: number; qualifiedCount: number; contactFoundCount: number; spamCount: number }> = {};
@@ -83,49 +73,64 @@ export async function POST(request: NextRequest) {
         continue; // Drop spam completely
       }
       
-      let initialPriority: Lead['priority'] = 'Qualified Lead';
+      let initialPriority: OpportunityPriority = aiResult.priority;
       
       if (aiResult.isRecruiter) {
         totalRecruiters++;
-        initialPriority = 'Recruiters';
+        initialPriority = 'Archive';
       } else if (aiResult.isAgencySelling) {
         totalAgencies++;
-        initialPriority = 'Agencies';
+        initialPriority = 'Archive';
       } else if (aiResult.isJobSeeker) {
         totalDevelopers++;
-        initialPriority = 'Developers';
+        initialPriority = 'Archive';
       } else if (aiResult.isStudent) {
         totalStudents++;
-        initialPriority = 'Students';
-      } else if (aiResult.intentConfidence < 70 || aiResult.businessConfidence < 70) {
-        initialPriority = 'Needs Human Review';
-        falsePositiveEstimate++;
-      } else if (aiResult.intentConfidence >= 90 && aiResult.businessConfidence >= 90) {
-        initialPriority = 'Hot Lead';
+        initialPriority = 'Archive';
       }
 
-      // Step 2: Live Website Verification
-      const webAnalysis = await verifier.verifyWebsite(undefined, post.content);
-
-      // Step 3: Lead Scoring & Contact Verification
       const hasPublicContact = Boolean(aiResult.publicEmail || aiResult.publicPhone || post.sourceUrl);
       if (hasPublicContact) {
         contactVerificationSuccesses++;
-      } else if (initialPriority === 'Hot Lead' || initialPriority === 'Qualified Lead') {
-        initialPriority = 'Needs Contact Verification';
       }
 
       // Track qualified sources
-      if (initialPriority === 'Hot Lead' || initialPriority === 'Qualified Lead' || initialPriority === 'Needs Contact Verification' || initialPriority === 'Needs Human Review') {
+      if (initialPriority !== 'Archive') {
          sourceStats[sourceId].qualifiedCount++;
          if (hasPublicContact) {
            sourceStats[sourceId].contactFoundCount++;
          }
       }
 
-      const scoreResult = scorer.calculateScore(aiResult, webAnalysis.hasWebsite, hasPublicContact, false, 1);
+      // Perform live website verification
+      let liveWebsiteAnalysis = aiResult.websiteAnalysis;
+      if (aiResult.websiteAnalysis && aiResult.websiteAnalysis.url) {
+        try {
+          const verification = await websiteVerifier.verifyWebsite(aiResult.websiteAnalysis.url, post.content);
+          liveWebsiteAnalysis = {
+            ...aiResult.websiteAnalysis,
+            ...verification,
+            url: verification.url || aiResult.websiteAnalysis.url,
+          };
+        } catch (e) {
+          console.error('[WebsiteVerifier] error:', e);
+        }
+      } else {
+        // Try to verify if there's any URL hint in the content
+        try {
+          const verification = await websiteVerifier.verifyWebsite(undefined, post.content);
+          liveWebsiteAnalysis = {
+            ...aiResult.websiteAnalysis,
+            ...verification,
+          };
+        } catch (e) {
+          console.error('[WebsiteVerifier] error:', e);
+        }
+      }
 
-      // Build Lead Object
+      // Build Lead Object with full CRM fields
+      const isWebsiteVerified = liveWebsiteAnalysis?.hasWebsite && liveWebsiteAnalysis?.url;
+      const now = new Date().toISOString();
       const newLead: Lead = {
         id: `lead-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         leadName: aiResult.leadName || post.author,
@@ -133,17 +138,32 @@ export async function POST(request: NextRequest) {
         businessType: aiResult.businessType || 'General Business',
         industry: aiResult.industry || 'Technology',
         country: aiResult.country,
-        city: aiResult.city || (aiResult.country === 'India' ? 'Bengaluru' : 'Toronto'),
+        city: aiResult.city || 'Unknown',
         language: aiResult.language || 'English',
         needSummary: aiResult.needSummary,
         intentCategory: aiResult.intentCategory,
-        estimatedBudget: aiResult.estimatedBudget,
-        urgency: aiResult.urgency,
+        estimatedBudget: aiResult.estimatedBudget || 'Not Estimated',
+        urgency: aiResult.urgency || 'Medium',
         priority: initialPriority,
-        leadScore: scoreResult.score,
-        intentConfidence: aiResult.intentConfidence,
-        businessConfidence: aiResult.businessConfidence,
-        scoreBreakdown: scoreResult.breakdown,
+
+        // Lifecycle
+        stage: 'AI Qualified',
+        stageHistory: [
+          { fromStage: 'New' as const, toStage: 'Discovered' as const, changedBy: 'Pipeline', changedAt: now, note: `Discovered from ${post.platform}` },
+          { fromStage: 'Discovered' as const, toStage: 'AI Qualified' as const, changedBy: 'Pipeline', changedAt: now, note: `Qualified by Groq LLaMA (score: ${aiResult.qualityScore?.totalScore})` },
+        ],
+
+        qualityScore: aiResult.qualityScore,
+        agencyFit: aiResult.agencyFit,
+        companyResearch: aiResult.companyResearch,
+        websiteAnalysis: liveWebsiteAnalysis,
+        internalWorkspace: aiResult.internalWorkspace,
+        timelineEvents: aiResult.timelineEvents,
+
+        opportunityValue: aiResult.opportunityValue,
+        opportunityConfidence: aiResult.agencyFit.confidence,
+        matchedServices: aiResult.agencyFit.secondaryServices || [],
+
         publicEmail: aiResult.publicEmail || undefined,
         publicPhone: aiResult.publicPhone || undefined,
         socialProfileUrl: post.sourceUrl,
@@ -152,25 +172,38 @@ export async function POST(request: NextRequest) {
         sourceTimestamp: post.timestamp,
         rawContent: post.content,
         authorHandle: post.authorHandle,
-        websiteAnalysis: webAnalysis,
-        humanReasoning: aiResult.humanReasoning,
-        explainability: aiResult.explainability,
-        verificationStatus: 'Verified Real Business',
+        verificationStatus: isWebsiteVerified ? 'Verified Real Business' : 'Pending Verification',
         duplicateStatus: 'Unique',
         pipelineStatus: initialPriority,
+
+        // CRM fields
+        internalNotes: [],
         userNotes: [],
-        tags: [aiResult.country, aiResult.intentCategory],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        tags: aiResult.country ? [aiResult.country] : [],
+        customLabels: [],
+        assignedTo: null,
+        isStarred: false,
+        manualScoreOverride: null,
+        followUps: [],
+        reminderDate: null,
+        lastContactDate: null,
+        contactAttempts: 0,
+        meetingStatus: 'None',
+        proposalStatus: 'None',
+
+        // Validation & Critique
+        revenueValidation: aiResult.revenueValidation,
+        uncertaintyPoints: aiResult.uncertaintyPoints || [],
+        userFeedback: null,
+        acceptanceReason: aiResult.acceptanceReason || 'AI Qualified',
+        rejectionReason: aiResult.rejectionReason || null,
+
+        createdAt: now,
+        updatedAt: now,
       };
 
       store.saveLead(newLead);
-      
-      // Step 4: Business Enrichment & Outreach Readiness
-      const enrichedLead = await enricher.enrichLead(newLead);
-      
-      store.saveLead(enrichedLead); // Overwrite with enriched
-      processedLeads.push(enrichedLead);
+      processedLeads.push(newLead);
     }
 
     const durationMs = Date.now() - startTime;
@@ -201,9 +234,9 @@ export async function POST(request: NextRequest) {
     const aiLeadQualityAudit: AILeadQualityAudit = {
       totalPosts: limitedPosts.length,
       qualifiedLeads: processedLeads.length,
-      hotLeads: processedLeads.filter(l => l.priority === 'Hot Lead').length,
+      hotLeads: processedLeads.filter(l => l.priority === 'Contact Today').length,
       contactVerifiedLeads: contactVerificationSuccesses,
-      needsContactVerification: processedLeads.filter(l => l.priority === 'Needs Contact Verification').length,
+      needsContactVerification: processedLeads.filter(l => l.priority === 'Needs Research').length,
       spam: totalSpam,
       recruiters: totalRecruiters,
       agencies: totalAgencies,

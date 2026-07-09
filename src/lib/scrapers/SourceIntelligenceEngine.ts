@@ -1,8 +1,10 @@
-import { RawPost, ConnectorHealth } from '../types/lead';
-import { RedditConnector } from './connectors/RedditConnector';
-import { UpworkConnector } from './connectors/UpworkConnector';
-import { FacebookConnector } from './connectors/FacebookConnector';
+import { RawPost } from '../types/lead';
 import { BaseConnector } from './connectors/BaseConnector';
+import { JobsConnector } from './connectors/JobsConnector';
+import { FacebookConnector } from './connectors/FacebookConnector';
+import { LinkedInConnector } from './connectors/LinkedInConnector';
+import { RedditApifyConnector } from './connectors/RedditApifyConnector';
+import { TwitterConnector } from './connectors/TwitterConnector';
 import { LeadStore } from '../db/store';
 
 export class SourceIntelligenceEngine {
@@ -10,29 +12,37 @@ export class SourceIntelligenceEngine {
 
   constructor() {
     this.connectors = [
-      new RedditConnector(),
-      new UpworkConnector(),
-      new FacebookConnector()
+      new JobsConnector(),
+      new FacebookConnector(),
+      new LinkedInConnector(),
+      new RedditApifyConnector(),
+      new TwitterConnector()
     ];
   }
 
-  async fetchPostsForRegion(country: 'India' | 'Canada'): Promise<{ posts: RawPost[], sourceId: string }[]> {
+  async fetchPostsWorldwide(country?: string): Promise<{ posts: RawPost[], sourceId: string }[]> {
     const results: { posts: RawPost[], sourceId: string }[] = [];
     const store = LeadStore.getInstance();
 
-    for (const connector of this.connectors) {
+    // Prioritize connectors by Quality Score (highest first)
+    const sortedConnectors = [...this.connectors].sort((a, b) => {
+       return b.getHealth().qualityScore - a.getHealth().qualityScore;
+    });
+
+    const fetchPromises = sortedConnectors.map(async (connector) => {
       try {
         const posts = await connector.fetchPosts(country);
-        results.push({ posts, sourceId: connector.sourceId });
-        
-        // Save connector health status to DB
         store.saveConnectorHealth(connector.getHealth());
+        return { posts, sourceId: connector.sourceId };
       } catch (err) {
         console.warn(`[SourceIntelligenceEngine] Error fetching from ${connector.sourceName}:`, err);
-        // Save error health status
         store.saveConnectorHealth(connector.getHealth());
+        return { posts: [], sourceId: connector.sourceId };
       }
-    }
+    });
+
+    const settledResults = await Promise.all(fetchPromises);
+    results.push(...settledResults.filter(r => r.posts.length > 0));
 
     return results;
   }

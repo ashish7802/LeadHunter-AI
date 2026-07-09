@@ -11,10 +11,10 @@ interface PipelineViewProps {
 }
 
 const STAGES: Lead['pipelineStatus'][] = [
-  'Hot Lead',
-  'In Discussion',
-  'Proposal Sent',
-  'Closed Won',
+  'Contact Today',
+  'Contact This Week',
+  'Monitor',
+  'Needs Research',
   'Archived',
 ];
 
@@ -54,9 +54,9 @@ export const LeadPipelineView: React.FC<PipelineViewProps> = ({
                         {lead.companyName}
                       </span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                        lead.leadScore >= 90 ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'
+                        (lead.qualityScore?.totalScore || 0) >= 90 ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'
                       }`}>
-                        {lead.leadScore}
+                        {lead.qualityScore?.totalScore || 0}
                       </span>
                     </div>
 

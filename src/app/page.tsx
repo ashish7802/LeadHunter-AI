@@ -6,11 +6,15 @@ import { MetricsOverview } from '@/components/dashboard/MetricsOverview';
 import { AnalyticsCharts } from '@/components/dashboard/AnalyticsCharts';
 import { LeadFilters } from '@/components/dashboard/LeadFilters';
 import { LeadTable } from '@/components/dashboard/LeadTable';
-import { LeadPipelineView } from '@/components/dashboard/LeadPipelineView';
-import { LeadDrawer } from '@/components/dashboard/LeadDrawer';
+import { OpportunityBoard } from '@/components/dashboard/OpportunityBoard';
+import { CRMDrawer } from '@/components/dashboard/CRMDrawer';
+import { FollowUpManager } from '@/components/dashboard/FollowUpManager';
+import { AIRecommendations } from '@/components/dashboard/AIRecommendations';
+import { AgencyAnalyticsView } from '@/components/dashboard/AgencyAnalytics';
 import { PipelineRunnerModal } from '@/components/dashboard/PipelineRunnerModal';
-import { Lead, PipelineMetrics } from '@/lib/types/lead';
-import { LayoutGrid, Table, RefreshCw, Sparkles } from 'lucide-react';
+import { SourceHealthDashboard } from '@/components/dashboard/SourceHealthDashboard';
+import { Lead, Company, PipelineMetrics, TeamMember, AIRecommendation, AgencyAnalytics, OpportunityStage } from '@/lib/types/lead';
+import { LayoutGrid, Table, RefreshCw, Sparkles, Activity, Calendar, Trophy, BarChart3 } from 'lucide-react';
 
 interface Toast {
   id: string;
@@ -18,28 +22,51 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
+type ViewMode = 'board' | 'table' | 'followups' | 'recommendations' | 'analytics' | 'sources';
+
 export default function DashboardPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
+  const [analyticsData, setAnalyticsData] = useState<AgencyAnalytics | null>(null);
+  
   const [metrics, setMetrics] = useState<PipelineMetrics>({
-    totalLeads: 0,
-    qualifiedLeads: 0,
-    hotLeads: 0,
-    indiaLeads: 0,
-    canadaLeads: 0,
-    todayLeads: 0,
-    avgLeadScore: 0,
+    totalOpportunities: 0,
+    outreachReady: 0,
+    verifiedBusinesses: 0,
+    highAgencyFit: 0,
+    contactableDecisionMakers: 0,
+    avgOpportunityScore: 0,
+    avgAgencyFitScore: 0,
+    falsePositiveRate: 0,
+    totalNoiseEliminated: 0,
+    contactMatchRate: 0,
+    meetingsBooked: 0,
+    proposalsSent: 0,
+    wonOpportunities: 0,
+    lostOpportunities: 0,
+    avgTimeToContactDays: 0,
+    conversionRate: 0,
+    stageDistribution: {},
   });
 
   const [isLoading, setIsLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>('board');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('All');
 
   // Filters
   const [industryFilter, setIndustryFilter] = useState('All');
   const [platformFilter, setPlatformFilter] = useState('All');
-  const [priorityFilter, setPriorityFilter] = useState('All');
+  const [opportunityValueFilter, setOpportunityValueFilter] = useState('All');
+  const [serviceFilter, setServiceFilter] = useState('All');
   const [websiteFilter, setWebsiteFilter] = useState('All');
+  
+  // CRM Filters
+  const [stageFilter, setStageFilter] = useState('All');
+  const [assignedFilter, setAssignedFilter] = useState('All');
+  const [starredFilter, setStarredFilter] = useState('All');
+  const [labelFilter, setLabelFilter] = useState('All');
 
   // Drawer & Modal states
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -59,38 +86,65 @@ export default function DashboardPage() {
     }, 4000);
   };
 
-  // Fetch leads from API
-  const fetchLeads = useCallback(async () => {
+  // Fetch core CRM data
+  const fetchCRMData = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({
-        searchQuery,
+        search: searchQuery,
         country: selectedCountry,
         industry: industryFilter,
         platform: platformFilter,
-        priority: priorityFilter,
+        opportunityValue: opportunityValueFilter,
+        service: serviceFilter,
         websiteStatus: websiteFilter,
+        stage: stageFilter,
+        assignedTo: assignedFilter,
+        isStarred: starredFilter,
+        label: labelFilter,
       });
 
-      const res = await fetch(`/api/leads?${params.toString()}`);
+      const res = await fetch(`/api/opportunities?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setLeads(data.leads || []);
         setMetrics(data.metrics || metrics);
       }
+      
+      const teamRes = await fetch('/api/team');
+      if (teamRes.ok) {
+        const teamData = await teamRes.json();
+        setTeamMembers(teamData.members || []);
+      }
+
+      const recsRes = await fetch('/api/ai/recommendations');
+      if (recsRes.ok) {
+        const recsData = await recsRes.json();
+        setRecommendations(recsData.recommendations || []);
+      }
+
+      const analyticsRes = await fetch('/api/analytics');
+      if (analyticsRes.ok) {
+        const aData = await analyticsRes.json();
+        setAnalyticsData(aData);
+      }
     } catch (err) {
       console.error('[Dashboard] Fetch error:', err);
-      addToast('Failed to load leads from server.', 'error');
+      addToast('Failed to load CRM data.', 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, selectedCountry, industryFilter, platformFilter, priorityFilter, websiteFilter]);
+  }, [
+    searchQuery, selectedCountry, industryFilter, platformFilter,
+    opportunityValueFilter, serviceFilter, websiteFilter,
+    stageFilter, assignedFilter, starredFilter, labelFilter
+  ]);
 
   useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
+    fetchCRMData();
+  }, [fetchCRMData]);
 
-  // Trigger Live Scraper & AI Qualification Pipeline
+  // Trigger Scanner Pipeline
   const handleTriggerPipeline = async (region: string) => {
     setIsPipelineRunning(true);
     setModalOpen(true);
@@ -112,13 +166,13 @@ export default function DashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setModalSummary(data.summary);
-        fetchLeads();
+        fetchCRMData();
         addToast(
-          `Pipeline complete! Discovered ${data.summary?.newQualified || 0} qualified lead signals.`,
+          `Pipeline complete! Discovered ${data.summary?.newQualified || 0} qualified opportunities.`,
           'success'
         );
       } else {
-        addToast('Pipeline execution encountered an issue.', 'error');
+        addToast('Pipeline execution failed.', 'error');
       }
     } catch (err) {
       console.error('[Pipeline] Execution error:', err);
@@ -131,85 +185,117 @@ export default function DashboardPage() {
   // Export handler
   const handleExport = (format: 'csv' | 'json') => {
     window.open(`/api/export?format=${format}&country=${selectedCountry}`, '_blank');
-    addToast(`Exporting leads as ${format.toUpperCase()}...`, 'info');
+    addToast(`Exporting pipeline as ${format.toUpperCase()}...`, 'info');
   };
 
-  // Update lead pipeline stage
-  const handleUpdateStatus = async (leadId: string, status: Lead['pipelineStatus']) => {
+  // CRM Mutation Dispatcher Helper
+  const dispatchCRMAction = async (leadId: string, action: string, data: any) => {
     try {
-      const res = await fetch('/api/leads', {
+      const res = await fetch('/api/opportunities', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: leadId, pipelineStatus: status }),
+        body: JSON.stringify({ id: leadId, action, ...data }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setLeads((prev) => prev.map((l) => (l.id === leadId ? data.lead : l)));
+        const body = await res.json();
+        
+        // Update state locally for speed
+        setLeads((prev) => prev.map((l) => (l.id === leadId ? body.lead : l)));
         if (selectedLead?.id === leadId) {
-          setSelectedLead(data.lead);
+          setSelectedLead(body.lead);
         }
-        addToast('Pipeline stage updated.', 'success');
+        
+        // Refresh dependencies
+        const analyticsRes = await fetch('/api/analytics');
+        if (analyticsRes.ok) {
+          const aData = await analyticsRes.json();
+          setAnalyticsData(aData);
+        }
+        
+        const metricsRes = await fetch(`/api/opportunities?getMetricsOnly=true`);
+        if (metricsRes.ok) {
+          const mData = await metricsRes.json();
+          setMetrics(mData.metrics);
+        }
+        
+        return true;
       }
+      return false;
     } catch (err) {
-      console.error('[UpdateStatus] Error:', err);
+      console.error(`[CRM Action: ${action}] error:`, err);
+      addToast('CRM operation failed.', 'error');
+      return false;
     }
   };
 
-  // Delete lead handler
+  // Specific CRM Handlers
+  const handleStageChange = async (leadId: string, stage: OpportunityStage) => {
+    const ok = await dispatchCRMAction(leadId, 'updateStage', { stage });
+    if (ok) addToast(`Moved opportunity to ${stage}`, 'success');
+  };
+
+  const handleAssign = async (leadId: string, memberId: string | null) => {
+    const ok = await dispatchCRMAction(leadId, 'assign', { teamMemberId: memberId });
+    if (ok) addToast(memberId ? 'Opportunity assigned to rep' : 'Opportunity unassigned', 'success');
+  };
+
+  const handleToggleStar = async (leadId: string) => {
+    await dispatchCRMAction(leadId, 'toggleStar', {});
+  };
+
+  const handleAddNote = async (leadId: string, content: string) => {
+    const ok = await dispatchCRMAction(leadId, 'addNote', { content, author: 'User' });
+    if (ok) addToast('Internal note saved.', 'success');
+  };
+
+  const handleAddFollowUp = async (leadId: string, data: any) => {
+    const ok = await dispatchCRMAction(leadId, 'addFollowUp', data);
+    if (ok) addToast('Follow-up task scheduled.', 'success');
+  };
+
+  const handleCompleteFollowUp = async (leadId: string, followUpId: string) => {
+    const ok = await dispatchCRMAction(leadId, 'completeFollowUp', { followUpId });
+    if (ok) addToast('Follow-up task completed.', 'success');
+  };
+
+  const handleAddLabel = async (leadId: string, label: string) => {
+    await dispatchCRMAction(leadId, 'addLabel', { label });
+  };
+
+  const handleRemoveLabel = async (leadId: string, label: string) => {
+    await dispatchCRMAction(leadId, 'removeLabel', { label });
+  };
+
+  const handleUpdateMeeting = async (leadId: string, status: string) => {
+    await dispatchCRMAction(leadId, 'updateMeeting', { meetingStatus: status });
+  };
+
+  const handleUpdateProposal = async (leadId: string, status: string) => {
+    await dispatchCRMAction(leadId, 'updateProposal', { proposalStatus: status });
+  };
+
   const handleDeleteLead = async (leadId: string) => {
     try {
-      const res = await fetch(`/api/leads?id=${leadId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/opportunities?id=${leadId}`, { method: 'DELETE' });
       if (res.ok) {
         setLeads((prev) => prev.filter((l) => l.id !== leadId));
-        if (selectedLead?.id === leadId) {
-          setSelectedLead(null);
-        }
-        addToast('Lead removed from CRM.', 'success');
+        if (selectedLead?.id === leadId) setSelectedLead(null);
+        addToast('Opportunity deleted.', 'success');
       }
     } catch (err) {
-      addToast('Failed to delete lead.', 'error');
+      addToast('Failed to delete opportunity.', 'error');
     }
   };
 
-  // Add User Note
-  const handleAddNote = async (leadId: string, note: string) => {
-    try {
-      const res = await fetch('/api/leads', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: leadId, userNote: note }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLeads((prev) => prev.map((l) => (l.id === leadId ? data.lead : l)));
-        if (selectedLead?.id === leadId) {
-          setSelectedLead(data.lead);
-        }
-        addToast('Note added.', 'success');
+  const handleRecommendationAction = (rec: AIRecommendation) => {
+    if (rec.leadId) {
+      const lead = leads.find(l => l.id === rec.leadId);
+      if (lead) {
+        setSelectedLead(lead);
       }
-    } catch (err) {
-      console.error('[AddNote] Error:', err);
-    }
-  };
-
-  // Add Tag
-  const handleAddTag = async (leadId: string, tag: string) => {
-    try {
-      const res = await fetch('/api/leads', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: leadId, tagToAdd: tag }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLeads((prev) => prev.map((l) => (l.id === leadId ? data.lead : l)));
-        if (selectedLead?.id === leadId) {
-          setSelectedLead(data.lead);
-        }
-        addToast('Tag added.', 'success');
-      }
-    } catch (err) {
-      console.error('[AddTag] Error:', err);
+    } else if (rec.type === 'hot_industry') {
+      setIndustryFilter(rec.title.split(' ')[0]);
+      setViewMode('board');
     }
   };
 
@@ -218,8 +304,13 @@ export default function DashboardPage() {
     setSelectedCountry('All');
     setIndustryFilter('All');
     setPlatformFilter('All');
-    setPriorityFilter('All');
+    setOpportunityValueFilter('All');
+    setServiceFilter('All');
     setWebsiteFilter('All');
+    setStageFilter('All');
+    setAssignedFilter('All');
+    setStarredFilter('All');
+    setLabelFilter('All');
   };
 
   return (
@@ -240,88 +331,169 @@ export default function DashboardPage() {
         {/* Metrics Grid */}
         <MetricsOverview metrics={metrics} />
 
-        {/* Analytics Visualizations */}
-        <AnalyticsCharts leads={leads} />
-
         {/* Filters & View Controls */}
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <LeadFilters
-              industryFilter={industryFilter}
-              onIndustryChange={setIndustryFilter}
-              platformFilter={platformFilter}
-              onPlatformChange={setPlatformFilter}
-              priorityFilter={priorityFilter}
-              onPriorityChange={setPriorityFilter}
-              websiteFilter={websiteFilter}
-              onWebsiteChange={setWebsiteFilter}
-              onReset={handleResetFilters}
-            />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <LeadFilters
+                industryFilter={industryFilter}
+                onIndustryChange={setIndustryFilter}
+                platformFilter={platformFilter}
+                onPlatformChange={setPlatformFilter}
+                opportunityValueFilter={opportunityValueFilter}
+                onOpportunityValueChange={setOpportunityValueFilter}
+                serviceFilter={serviceFilter}
+                onServiceChange={setServiceFilter}
+                websiteFilter={websiteFilter}
+                onWebsiteChange={setWebsiteFilter}
+                stageFilter={stageFilter}
+                onStageChange={setStageFilter}
+                assignedFilter={assignedFilter}
+                onAssignedChange={setAssignedFilter}
+                starredFilter={starredFilter}
+                onStarredChange={setStarredFilter}
+                labelFilter={labelFilter}
+                onLabelChange={setLabelFilter}
+                teamMembers={teamMembers}
+                onReset={handleResetFilters}
+              />
 
-            {/* View Mode Toggle Buttons */}
-            <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/10 text-xs self-end sm:self-auto">
-              <button
-                onClick={() => setViewMode('table')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
-                  viewMode === 'table'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <Table className="w-3.5 h-3.5" />
-                <span>Table</span>
-              </button>
-              <button
-                onClick={() => setViewMode('pipeline')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
-                  viewMode === 'pipeline'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Pipeline Board</span>
-              </button>
+              {/* View Mode Toggle Buttons */}
+              <div className="flex flex-wrap items-center p-1 rounded-xl bg-white/5 border border-white/10 text-xs self-end sm:self-auto gap-1">
+                <button
+                  onClick={() => setViewMode('board')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    viewMode === 'board'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Kanban</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    viewMode === 'table'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Table className="w-3.5 h-3.5" />
+                  <span>CRM Table</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('followups')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    viewMode === 'followups'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Follow-ups</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('recommendations')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    viewMode === 'recommendations'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>AI Recs</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('analytics')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    viewMode === 'analytics'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  <span>Analytics</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('sources')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    viewMode === 'sources'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>Sources</span>
+                </button>
+              </div>
             </div>
+
+            {/* In-page charts (visible only in main board/table views to reduce clutter) */}
+            {(viewMode === 'board' || viewMode === 'table') && (
+              <AnalyticsCharts leads={leads} />
+            )}
           </div>
 
           {/* Main Content View */}
           {isLoading ? (
             <div className="glass-panel rounded-2xl p-12 text-center border border-white/10">
               <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin mx-auto mb-3" />
-              <p className="text-xs text-gray-400 font-mono">Loading Lead Intelligence Data...</p>
+              <p className="text-xs text-gray-400 font-mono">Synchronizing Workspace Intel...</p>
             </div>
-          ) : leads.length === 0 ? (
+          ) : leads.length === 0 && viewMode !== 'recommendations' && viewMode !== 'analytics' ? (
             <div className="glass-panel rounded-2xl p-16 text-center border border-white/10">
               <div className="w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center mx-auto mb-6 border border-indigo-500/30 shadow-xl">
                 <Sparkles className="w-10 h-10 text-indigo-400 animate-pulse" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">No Leads Discovered Yet</h3>
+              <h3 className="text-xl font-bold text-white mb-2">No Opportunities Match Your Filter</h3>
               <p className="text-sm text-gray-400 max-w-md mx-auto mb-8 leading-relaxed">
-                Click "Discover Real Leads Now" to trigger live public scrapers (Algolia HN, GitHub Discussions, HN Jobs) and qualify leads using Groq LLaMA 3.3 70B for India 🇮🇳 & Canada 🇨🇦.
+                Click "Discover Real Leads Now" or reset your CRM/Pipeline filters to inspect worldwide business purchase opportunities.
               </p>
               <button
-                onClick={() => handleTriggerPipeline(selectedCountry)}
-                disabled={isPipelineRunning}
+                onClick={handleResetFilters}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/25 transition-all transform hover:-translate-y-0.5"
               >
-                <Sparkles className="w-4 h-4" />
-                <span>Discover Real Leads Now</span>
+                <span>Reset Workspace Filters</span>
               </button>
             </div>
+          ) : viewMode === 'board' ? (
+            <OpportunityBoard
+              leads={leads}
+              teamMembers={teamMembers}
+              onSelectLead={setSelectedLead}
+              onStageChange={handleStageChange}
+              onToggleStar={handleToggleStar}
+            />
           ) : viewMode === 'table' ? (
             <LeadTable
               leads={leads}
+              teamMembers={teamMembers}
               onSelectLead={setSelectedLead}
-              onUpdateStatus={handleUpdateStatus}
+              onStageChange={handleStageChange}
+              onAssign={handleAssign}
+              onToggleStar={handleToggleStar}
               onDeleteLead={handleDeleteLead}
             />
-          ) : (
-            <LeadPipelineView
+          ) : viewMode === 'followups' ? (
+            <FollowUpManager
               leads={leads}
+              teamMembers={teamMembers}
               onSelectLead={setSelectedLead}
-              onUpdateStatus={handleUpdateStatus}
+              onCompleteFollowUp={handleCompleteFollowUp}
             />
+          ) : viewMode === 'recommendations' ? (
+            <AIRecommendations
+              recommendations={recommendations}
+              onAction={handleRecommendationAction}
+            />
+          ) : viewMode === 'analytics' ? (
+            <AgencyAnalyticsView
+              analytics={analyticsData}
+              metrics={metrics}
+            />
+          ) : (
+            <SourceHealthDashboard />
           )}
         </div>
 
@@ -329,17 +501,26 @@ export default function DashboardPage() {
 
       {/* Footer */}
       <footer className="border-t border-white/10 bg-[#060911] py-6 px-6 text-center text-xs text-gray-500">
-        <p>LeadHunter AI v2 • Powered by Groq LLaMA 3.3 70B & Real Public Data Sources • India 🇮🇳 & Canada 🇨🇦</p>
+        <p>LeadHunter AI — Internal Agency CRM & Operating System • Groq LLaMA 3.3 70B & Production API Connectors • Worldwide</p>
       </footer>
 
-      {/* Lead Detail Inspector Drawer */}
-      <LeadDrawer
+      {/* CRM Slide-out Drawer */}
+      <CRMDrawer
         lead={selectedLead}
+        isOpen={Boolean(selectedLead)}
         onClose={() => setSelectedLead(null)}
-        onUpdateStatus={handleUpdateStatus}
+        teamMembers={teamMembers}
+        onStageChange={handleStageChange}
+        onToggleStar={handleToggleStar}
+        onAssign={handleAssign}
         onAddNote={handleAddNote}
-        onAddTag={handleAddTag}
-        onDeleteLead={handleDeleteLead}
+        onAddFollowUp={handleAddFollowUp}
+        onCompleteFollowUp={handleCompleteFollowUp}
+        onAddLabel={handleAddLabel}
+        onRemoveLabel={handleRemoveLabel}
+        onUpdateMeeting={handleUpdateMeeting}
+        onUpdateProposal={handleUpdateProposal}
+        onDelete={handleDeleteLead}
       />
 
       {/* Pipeline Progress Modal */}

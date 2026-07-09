@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
       leads = leads.filter((l) => l.country === country);
     }
 
-    // Filter to qualified leads only (Hot Lead & Qualified Lead)
-    const qualifiedLeads = leads.filter((l) => l.priority === 'Hot Lead' || l.priority === 'Qualified Lead');
+    // Filter to qualified leads only (Contact Today & Contact This Week)
+    const qualifiedLeads = leads.filter((l) => l.priority === 'Contact Today' || l.priority === 'Contact This Week');
 
     if (format === 'json') {
       return new NextResponse(JSON.stringify(qualifiedLeads, null, 2), {
@@ -63,13 +63,13 @@ export async function GET(request: NextRequest) {
         `"${l.needSummary.replace(/"/g, '""')}"`,
         `"${l.estimatedBudget}"`,
         `"${l.priority}"`,
-        l.leadScore,
+        l.qualityScore?.totalScore || 0,
         `"${l.publicEmail || ''}"`,
         `"${l.publicPhone || ''}"`,
         `"${l.platform}"`,
         `"${l.sourceUrl}"`,
-        l.websiteAnalysis.hasWebsite ? 'Yes' : 'No',
-        `"${l.explainability?.whyQualified?.replace(/"/g, '""') || l.humanReasoning.replace(/"/g, '""')}"`,
+        l.websiteAnalysis?.hasWebsite ? 'Yes' : 'No',
+        `"${(l.internalWorkspace?.aiReasoning || '').replace(/"/g, '""')}"`,
         `"${l.createdAt}"`,
       ]);
 

@@ -21,7 +21,7 @@ export const PipelineRunnerModal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   const steps = [
-    { num: 1, title: 'Multi-Source Public API Ingestion', desc: `Scanning Algolia HN, GitHub Issues, and HN JobStream for ${region} intent` },
+    { num: 1, title: 'Multi-Source Public API Ingestion', desc: `Scanning LinkedIn, Twitter/X, Reddit, Facebook, and Job feeds for ${region} opportunities` },
     { num: 2, title: 'Data Cleaning & Content Hash Deduplication', desc: 'Filtering out spam, duplicate posts, and recruiters' },
     { num: 3, title: 'Groq LLaMA 3.3 70B AI Qualification', desc: 'Extracting business purchase intent, budget clarity, and urgency' },
     { num: 4, title: 'Live Website Verification Layer', desc: 'HTTP HEAD verification for domain status, HTTPS, and age signals' },

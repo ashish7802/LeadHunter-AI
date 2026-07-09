@@ -1,20 +1,64 @@
-import { RawPost, CountryType, IntentCategory } from '../types/lead';
+import { 
+  RawPost, 
+  CountryType, 
+  IntentCategory, 
+  AgencyService, 
+  OpportunityValue, 
+  OpportunityPriority,
+  OpportunityQualityScore,
+  AgencyFitEngine,
+  WebsiteOpportunityAnalysis,
+  OpportunityTimelineEvent,
+  InternalSalesWorkspace,
+  CompanyResearch,
+  RevenueConfidence
+} from '../types/lead';
 
 export interface AIQualificationResult {
-  humanReasoning: string;
   isBusinessOwner: boolean;
   hasPurchaseIntent: boolean;
   leadName: string;
   companyName: string;
   businessType: string;
   industry: string;
-  country: CountryType;
+  country: string;
   city: string;
   language: string;
   needSummary: string;
   intentCategory: IntentCategory;
+  
   estimatedBudget: string;
   urgency: 'Immediate (ASAP)' | 'High' | 'Medium' | 'Low';
+  
+  opportunityValue: OpportunityValue;
+  priority: OpportunityPriority;
+  
+  qualityScore: OpportunityQualityScore;
+  agencyFit: AgencyFitEngine;
+  internalWorkspace: InternalSalesWorkspace;
+  companyResearch: CompanyResearch;
+  websiteAnalysis: WebsiteOpportunityAnalysis;
+  timelineEvents: OpportunityTimelineEvent[];
+  
+  // Revenue validation & uncertainty
+  revenueValidation: {
+    legitimacy: number;
+    intent: number;
+    fit: number;
+    contact: number;
+    website: number;
+    maturity: number;
+    urgency: number;
+    effort: number;
+    value: number;
+    competition: string;
+    confidence: RevenueConfidence;
+    reasoning: string;
+  };
+  uncertaintyPoints: string[];
+  acceptanceReason: string;
+  rejectionReason: string | null;
+
   publicEmail?: string;
   publicPhone?: string;
   isSpam: boolean;
@@ -22,14 +66,6 @@ export interface AIQualificationResult {
   isAgencySelling: boolean;
   isJobSeeker: boolean;
   isStudent: boolean;
-  intentConfidence: number;
-  businessConfidence: number;
-  explainability: {
-    whyQualified: string;
-    intentSentences: string[];
-    contactValidation: string;
-    businessCapability: string;
-  };
 }
 
 export class GroqQualifier {
@@ -50,18 +86,33 @@ export class GroqQualifier {
       return this.ruleBasedFallback(post);
     }
 
-    const systemPrompt = `You are LeadHunter AI's Deep Intent Engine powered by Groq LLaMA 3.3 70B.
-Your task is to analyze raw public posts and extract structured business lead signals for web development services.
+    const systemPrompt = `You are LeadHunter AI's Senior Agency Strategist powered by Groq LLaMA 3.3 70B.
+Your task is to analyze raw public posts and identify high-quality business opportunities worldwide for our custom web development and automation agency.
+
+Our Agency Services:
+- Custom Web Development
+- AI Automation
+- Lead Generation Systems
+- Business Automation
+- Landing Pages
+- SaaS Development
+- E-commerce Solutions
+- CRM & Dashboard Development
+- API Integrations
+- Performance Optimization
 
 Strict Rules (CRITICAL - DO NOT IGNORE):
-1. NO KEYWORD MATCHING: Do not classify a lead just because they said "web development", "react", "website", or "frontend". Read the whole post. Understand the context. Are they a buyer, a seller, a student, or a recruiter?
-2. VERIFY CONTACT INFO: Never hallucinate or generate fake emails/phones. Only extract contact info if explicitly written in the raw content.
-3. HUMAN REASONING FIRST: Begin your JSON with a 'humanReasoning' field explaining your logic internally like a human sales consultant. Ask yourself: "What is the author actually trying to achieve?"
-4. CONFIDENCE SEPARATION: Separate intentConfidence (how sure are you they want to buy?) from businessConfidence (how sure are you they are a real business/founder?). Rate 0-100.
-5. STRICT CATEGORIES: 'intentCategory' must be EXACTLY ONE of the allowed strings.
-6. EXPLAINABILITY: Fill the 'explainability' object with rigorous, logical proofs from the text.
-7. BUSINESS FIRST: Reject leads that are just developers looking for jobs or students asking questions. Only accept true business/founders/SMEs.
-8. TARGET COUNTRIES: Only target India and Canada. If unknown, set 'Other'.`;
+1. NO KEYWORD MATCHING: Do not classify a lead just because they said "web development". Read the whole post. Is this a genuine business owner asking for help? Or a student/developer?
+2. REJECT FALSE POSITIVES: You MUST aggressively reject (set isJobSeeker=true, isStudent=true, isRecruiter=true, isAgencySelling=true, or isSpam=true) if the post is a developer, student, tutorial, meme, recruiter, or agency selling services.
+3. CONVERSION INTELLIGENCE: Evaluate "Opportunity Quality Score" out of 100 based on multiple dimensions like decision maker confidence, purchase intent, etc.
+4. AGENCY FIT ENGINE: Only accept if the company matches our Agency Services. Calculate an Agency Fit Score (0-100).
+5. OPPORTUNITY PRIORITY: Organize into 'Contact Today', 'Contact This Week', 'Monitor', 'Needs Research', or 'Archive'.
+6. REVENUE VALIDATION: Evaluate if this is realistically worth our outreach. Calculate legitimacy, intent, fit, contact, website, maturity, urgency, effort, and value scores (0 to 10). Assign a Revenue Confidence rating ('Low', 'Medium', 'High', 'Very High') with a detailed reasoning.
+7. AI SELF-CRITIQUE: If you accept an opportunity, explain why it could be wrong. Be critical. List uncertainty points (e.g. "Missing contact", "Intent uncertain", "Possible recruiter", "Old post").
+8. EXPLAINABILITY: Provide a clear acceptanceReason (why this was qualified) or a rejectionReason (if disqualified).
+9. NO FABRICATION: If a website, metric, or event is not publicly observable in the text or author metadata, leave it empty or false. Do NOT claim issues that cannot be verified.
+10. TIMELINE: Extract events like "Company launched", "Hiring related to digital growth", etc.
+11. INTERNAL SALES WORKSPACE: Create an internal workspace summary mapping out business pain points, suggested services, and next actions.`;
 
     const userPrompt = `Analyze this post and output structured JSON:
 
@@ -72,35 +123,105 @@ Content: "${post.content}"
 
 Required JSON Schema (MUST MATCH EXACTLY):
 {
-  "humanReasoning": "Internal thought process explaining intent and business status",
   "isBusinessOwner": boolean,
   "hasPurchaseIntent": boolean,
   "leadName": "Person's name or author handle",
   "companyName": "Company or Brand Name",
-  "businessType": "e.g., Healthcare Clinic, D2C Fashion, B2B SaaS, Restaurant, etc.",
-  "industry": "e.g., Healthcare, E-Commerce, Software, Food & Beverage, Real Estate, Services",
-  "country": "India" or "Canada" or "Other",
+  "businessType": "e.g., Healthcare Clinic, B2B SaaS",
+  "industry": "e.g., Healthcare, Software",
+  "country": "Country name, or 'Worldwide'",
   "city": "City name if mentioned",
   "language": "English",
-  "needSummary": "1-2 sentence concise summary of web dev request",
+  "needSummary": "1-2 sentence concise summary of their problem",
   "intentCategory": "Website Purchase" | "Landing Page" | "Ecommerce Store" | "SaaS Development" | "MVP Development" | "Automation" | "Dashboard Development" | "Booking System" | "Website Redesign" | "Business Launch" | "Digital Transformation" | "Freelancer Hiring" | "Agency Hiring" | "Marketing Only" | "Recruiting Employees" | "Looking For Job" | "Learning" | "Tutorial" | "Discussion" | "Meme" | "News" | "Spam" | "Unknown",
-  "estimatedBudget": "e.g. ₹80k - 1.5L, $3,500 CAD, or Unknown",
-  "urgency": "Immediate (ASAP)", "High", "Medium", or "Low",
+  "estimatedBudget": "e.g., $5,000, $500/mo, or 'Not Estimated'",
+  "urgency": "Immediate (ASAP)" | "High" | "Medium" | "Low",
+  "opportunityValue": "Low" | "Medium" | "High" | "Enterprise",
+  "priority": "Contact Today" | "Contact This Week" | "Monitor" | "Needs Research" | "Archive",
+  "qualityScore": {
+    "businessVerification": 0 to 10,
+    "decisionMakerConfidence": 0 to 10,
+    "purchaseIntent": 0 to 10,
+    "publicContactAvailability": 0 to 10,
+    "websiteOpportunity": 0 to 10,
+    "serviceMatch": 0 to 10,
+    "companyMaturity": 0 to 10,
+    "buyingSignalStrength": 0 to 10,
+    "recentActivity": 0 to 10,
+    "sourceReliability": 0 to 10,
+    "totalScore": 0 to 100
+  },
+  "revenueValidation": {
+    "legitimacy": 0 to 10,
+    "intent": 0 to 10,
+    "fit": 0 to 10,
+    "contact": 0 to 10,
+    "website": 0 to 10,
+    "maturity": 0 to 10,
+    "urgency": 0 to 10,
+    "effort": 0 to 10,
+    "value": 0 to 10,
+    "competition": "e.g., High, None, Low, or explain evidence",
+    "confidence": "Low" | "Medium" | "High" | "Very High",
+    "reasoning": "Explain why this company is or is not realistically worth outreach effort"
+  },
+  "uncertaintyPoints": ["Point 1", "Point 2"],
+  "acceptanceReason": "Explain why this lead is qualified and worth checking",
+  "rejectionReason": "If disqualified, explain why (else null)",
+  "agencyFit": {
+    "agencyFitScore": 0 to 100,
+    "primaryService": "Must exactly match one of Our Agency Services",
+    "secondaryServices": ["Matches from Our Agency Services"],
+    "recommendedSolution": "Brief description of the solution we can offer",
+    "confidence": 0 to 100
+  },
+  "internalWorkspace": {
+    "opportunitySummary": "Summary for internal sales team",
+    "aiReasoning": "AI's reasoning for this opportunity",
+    "businessPainPoints": ["Point 1", "Point 2"],
+    "suggestedAgencyServices": ["Matches from Our Agency Services"],
+    "recommendedOutreachChannel": "e.g., LinkedIn, Email",
+    "recommendedFollowUpTiming": "e.g., Today, Next Week",
+    "publicSupportingEvidence": ["Evidence 1 from text"],
+    "nextActions": ["Action 1", "Action 2"]
+  },
+  "companyResearch": {
+    "companyWebsite": "Extract if present, else empty",
+    "industry": "Extract if present, else empty",
+    "businessSize": "Extract if present, else empty",
+    "digitalMaturity": "Low" | "Medium" | "High" | "Unknown",
+    "recentAnnouncements": ["Announcement 1 if present"],
+    "techIndicators": ["Tech 1 if present"],
+    "hasOnlineBooking": boolean,
+    "contactPageUrl": "Extract if present, else empty",
+    "socialPresence": ["Platform name if present"]
+  },
+  "websiteAnalysis": {
+    "url": "Website URL if present",
+    "hasWebsite": boolean,
+    "usesHttps": boolean,
+    "isMobileFriendly": boolean,
+    "hasContactPage": boolean,
+    "hasCallsToAction": boolean,
+    "hasOutdatedDesign": boolean,
+    "contentFreshness": "e.g., Active, Stale, Unknown",
+    "agencyHelpSummary": "How our agency can help improve the website"
+  },
+  "timelineEvents": [
+    {
+      "title": "Event Title",
+      "date": "YYYY-MM-DD or timeframe",
+      "publicSourceReference": "Text segment indicating this event",
+      "description": "Description of the event"
+    }
+  ],
   "publicEmail": "extracted email if present, else empty string",
   "publicPhone": "extracted phone if present, else empty string",
   "isSpam": boolean,
   "isRecruiter": boolean,
   "isAgencySelling": boolean,
   "isJobSeeker": boolean,
-  "isStudent": boolean,
-  "intentConfidence": integer 0 to 100,
-  "businessConfidence": integer 0 to 100,
-  "explainability": {
-    "whyQualified": "Why is this a high intent B2B lead?",
-    "intentSentences": ["Exact quote 1 from text", "Exact quote 2"],
-    "contactValidation": "How can we contact them based on the text?",
-    "businessCapability": "Why do we think they have the budget/authority to buy?"
-  }
+  "isStudent": boolean
 }`;
 
     const maxRetries = 3;
@@ -144,7 +265,7 @@ Required JSON Schema (MUST MATCH EXACTLY):
         const parsed: AIQualificationResult = JSON.parse(rawText);
 
         // Basic Schema Validation
-        if (typeof parsed.isBusinessOwner !== 'boolean' || typeof parsed.humanReasoning !== 'string' || !parsed.explainability) {
+        if (typeof parsed.isBusinessOwner !== 'boolean' || !parsed.qualityScore || !parsed.agencyFit || !parsed.internalWorkspace) {
           throw new Error('Groq response failed schema validation');
         }
 
@@ -165,42 +286,88 @@ Required JSON Schema (MUST MATCH EXACTLY):
 
   private ruleBasedFallback(post: RawPost): AIQualificationResult {
     const text = post.content.toLowerCase();
-    const isIndia = post.content.includes('India') || post.content.includes('Bengaluru') || post.content.includes('Mumbai') || post.content.includes('Delhi') || post.content.includes('₹') || post.locationHint?.includes('India');
-    const isCanada = post.content.includes('Canada') || post.content.includes('Toronto') || post.content.includes('Montreal') || post.content.includes('Vancouver') || post.content.includes('CAD') || post.locationHint?.includes('Canada');
-
+    
     const emailMatch = post.content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     const publicEmail = emailMatch ? emailMatch[0] : '';
 
     return {
-      humanReasoning: 'FALLBACK: Groq API was unavailable. This is a rudimentary string matching estimate, not AI-verified semantic intent.',
       isBusinessOwner: true,
       hasPurchaseIntent: true,
       leadName: post.author,
       companyName: post.author ? `${post.author} Business` : 'Unknown Business',
       businessType: 'General Services',
       industry: 'Technology',
-      country: isIndia ? 'India' : isCanada ? 'Canada' : 'Other',
-      city: isIndia ? 'Bengaluru' : isCanada ? 'Toronto' : 'Other',
+      country: post.locationHint || 'Worldwide',
+      city: 'Unknown',
       language: 'English',
       needSummary: 'Potential web development needs inferred from text.',
       intentCategory: 'Unknown',
-      estimatedBudget: 'Unknown',
+      estimatedBudget: 'Not Estimated',
       urgency: 'Medium',
+      opportunityValue: 'Medium',
+      priority: 'Monitor',
+      qualityScore: {
+        businessVerification: 5,
+        decisionMakerConfidence: 5,
+        purchaseIntent: 5,
+        publicContactAvailability: publicEmail ? 10 : 0,
+        websiteOpportunity: 0,
+        serviceMatch: 5,
+        companyMaturity: 5,
+        buyingSignalStrength: 5,
+        recentActivity: 5,
+        sourceReliability: 5,
+        totalScore: 50
+      },
+      revenueValidation: {
+        legitimacy: 5,
+        intent: 5,
+        fit: 5,
+        contact: publicEmail ? 10 : 0,
+        website: 5,
+        maturity: 5,
+        urgency: 5,
+        effort: 5,
+        value: 5,
+        competition: 'Unknown',
+        confidence: 'Medium',
+        reasoning: 'FALLBACK: Rule-based verification fallback.'
+      },
+      uncertaintyPoints: ['Groq API offline', 'Inferred location', 'General keyword match'],
+      acceptanceReason: 'Rule-based check triggered matching fallback rules',
+      rejectionReason: null,
+      agencyFit: {
+        agencyFitScore: 50,
+        primaryService: 'Custom Web Development',
+        secondaryServices: [],
+        recommendedSolution: 'Fallback generation',
+        confidence: 40
+      },
+      internalWorkspace: {
+        opportunitySummary: 'Fallback logic.',
+        aiReasoning: 'Fallback',
+        businessPainPoints: ['Unknown'],
+        suggestedAgencyServices: ['Custom Web Development'],
+        recommendedOutreachChannel: 'Email',
+        recommendedFollowUpTiming: 'Whenever',
+        publicSupportingEvidence: [],
+        nextActions: ['Investigate manually']
+      },
+      companyResearch: {
+        digitalMaturity: 'Unknown'
+      },
+      websiteAnalysis: {
+        hasWebsite: false,
+        agencyHelpSummary: 'No analysis'
+      },
+      timelineEvents: [],
       publicEmail,
       publicPhone: '',
       isSpam: false,
       isRecruiter: false,
       isAgencySelling: false,
       isJobSeeker: false,
-      isStudent: false,
-      intentConfidence: 40,
-      businessConfidence: 40,
-      explainability: {
-        whyQualified: 'Rule-based fallback matched location/keywords.',
-        intentSentences: [],
-        contactValidation: 'Regex pattern matching.',
-        businessCapability: 'Unknown.'
-      }
+      isStudent: false
     };
   }
 }

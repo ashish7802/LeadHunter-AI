@@ -2,21 +2,37 @@ import { BaseConnector } from './BaseConnector';
 import { RawPost } from '../../types/lead';
 
 export class FacebookConnector extends BaseConnector {
-  sourceId = 'facebook_groups';
-  sourceName = 'Facebook Groups API';
+  sourceId = 'apify_facebook';
+  sourceName = 'Facebook Posts Scraper';
+  actorId = 'apify/facebook-posts-scraper';
 
-  async fetchPosts(country: 'India' | 'Canada'): Promise<RawPost[]> {
-    const apiKey = process.env.FACEBOOK_API_KEY;
-    
-    if (!apiKey) {
-      this.health.status = 'Not Configured';
-      this.health.errorMessage = 'Missing FACEBOOK_API_KEY. Connect a production API to enable this source.';
-      this.health.lastSync = new Date().toISOString();
-      return [];
-    }
+  protected async fetchRawData(country?: string): Promise<any[]> {
+    const startUrls = [
+      { url: 'https://www.facebook.com/groups/saasfounders' },
+      { url: 'https://www.facebook.com/groups/ecommerceentrepreneurs' },
+      { url: 'https://www.facebook.com/groups/smallbusinessowners' }
+    ];
+      
+    const input = {
+      startUrls,
+      resultsLimit: 10,
+      proxyConfiguration: { useApifyProxy: true }
+    };
+    return this.runActorWithRetry(input);
+  }
 
-    // Example implementation if API key was present
-    // ...
-    return [];
+  protected normalizeData(rawData: any[], country?: string): RawPost[] {
+    return rawData
+      .filter(post => !post.error)
+      .map(post => ({
+        id: post.id || post.post_id || Math.random().toString(36).substring(7),
+        platform: 'facebook',
+        sourceUrl: post.url || post.post_url || '',
+        author: post.user?.name || post.page_name || 'Unknown',
+        authorHandle: post.user?.profile_url || '',
+        timestamp: post.time || post.date || new Date().toISOString(),
+        content: post.text || post.message || '',
+        locationHint: country || 'Worldwide'
+      }));
   }
 }

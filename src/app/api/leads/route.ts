@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
       priority: searchParams.get('priority') || 'All',
       websiteStatus: searchParams.get('websiteStatus') || 'All',
       minScore: searchParams.get('minScore') ? parseInt(searchParams.get('minScore')!) : 0,
+      opportunityValue: searchParams.get('opportunityValue') || 'All',
+      service: searchParams.get('service') || 'All',
     };
 
     const leads = store.getAllLeads(filters);
